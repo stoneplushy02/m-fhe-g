@@ -1,7 +1,7 @@
 {
-  "name": "magic-fhe-gathering",
+  "name": "m-fhe-g",
   "version": "1.0.0",
-  "description": "Magic FHE Gathering - Card battle game with encrypted characters using FHE",
+  "description": "m-fhe-g - Card battle game with encrypted characters using FHE",
   "private": true,
   "scripts": {
     "dev": "next dev",

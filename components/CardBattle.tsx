@@ -67,6 +67,8 @@ export default function CardBattle() {
   const [myDecks, setMyDecks] = useState<Deck[]>([])
   const [myBattles, setMyBattles] = useState<Battle[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [relayerInstance, setRelayerInstance] = useState<any>(null)
+  const [isRelayerLoading, setIsRelayerLoading] = useState(false)
 
   const [newDeckName, setNewDeckName] = useState('')
   const [selectedCharacters, setSelectedCharacters] = useState<number[]>([])
@@ -81,12 +83,74 @@ export default function CardBattle() {
   }, [isConnected, chainId, switchChain])
 
   useEffect(() => {
+    initRelayer()
+  }, [])
+
+  useEffect(() => {
     if (isConnected && address && CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000') {
       loadMyCharacters()
       loadMyDecks()
       loadMyBattles()
     }
   }, [isConnected, address])
+
+  // Initialize FHE relayer
+  const initRelayer = async () => {
+    setIsRelayerLoading(true)
+    try {
+      const relayerModule: any = await Promise.race([
+        import('@zama-fhe/relayer-sdk/web'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Relayer timeout')), 10000))
+      ])
+
+      const sdkInitialized = await Promise.race([
+        relayerModule.initSDK(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('SDK init timeout')), 10000))
+      ])
+      if (!sdkInitialized) {
+        throw new Error('SDK init failed')
+      }
+
+      const instance = await Promise.race([
+        relayerModule.createInstance(relayerModule.SepoliaConfig),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Instance creation timeout')), 10000))
+      ])
+      setRelayerInstance(instance)
+    } catch (error) {
+      console.error('Failed to initialize relayer:', error)
+    } finally {
+      setIsRelayerLoading(false)
+    }
+  }
+
+  // Encrypt number using FHE
+  const encryptNumber = async (value: number): Promise<string> => {
+    if (!relayerInstance || !address) {
+      throw new Error('Relayer not initialized or wallet not connected')
+    }
+
+    // Ensure value fits in 32-bit range for FHE
+    const safeValue = Math.max(0, Math.min(value, 2**31 - 1))
+
+    const inputBuilder = relayerInstance.createEncryptedInput(
+      CONTRACT_ADDRESS,
+      address
+    )
+    inputBuilder.add32(safeValue)
+
+    const encryptedInput = await Promise.race([
+      inputBuilder.encrypt(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Encryption timeout')), 30000)
+      )
+    ]) as any
+
+    if (!encryptedInput?.handles || encryptedInput.handles.length === 0) {
+      throw new Error('Encryption failed')
+    }
+
+    return encryptedInput.handles[0]
+  }
 
   const getEthersSigner = async () => {
     if (walletClient) {
@@ -188,14 +252,17 @@ export default function CardBattle() {
       return
     }
 
+    if (!relayerInstance) {
+      alert('FHE relayer is not ready. Please wait...')
+      return
+    }
+
     setIsLoading(true)
     try {
-      const strengthBytes = ethers.toUtf8Bytes(character.strength.toString())
-      const strengthHash = ethers.keccak256(strengthBytes)
-      const intelligenceBytes = ethers.toUtf8Bytes(character.intelligence.toString())
-      const intelligenceHash = ethers.keccak256(intelligenceBytes)
-      const agilityBytes = ethers.toUtf8Bytes(character.agility.toString())
-      const agilityHash = ethers.keccak256(agilityBytes)
+      // Encrypt stats using FHE
+      const encryptedStrength = await encryptNumber(character.strength)
+      const encryptedIntelligence = await encryptNumber(character.intelligence)
+      const encryptedAgility = await encryptNumber(character.agility)
 
       const signer = await getEthersSigner()
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
@@ -203,9 +270,9 @@ export default function CardBattle() {
       const tx = await contract.mintCharacter(
         character.name,
         character.ability,
-        strengthHash,
-        intelligenceHash,
-        agilityHash
+        encryptedStrength,
+        encryptedIntelligence,
+        encryptedAgility
       )
       await tx.wait()
 
@@ -261,6 +328,11 @@ export default function CardBattle() {
       return
     }
 
+    if (!relayerInstance) {
+      alert('FHE relayer is not ready. Please wait...')
+      return
+    }
+
     if (!battleOpponent.trim() || !selectedDeckForBattle) {
       alert('Please enter opponent address and select a deck')
       return
@@ -268,7 +340,22 @@ export default function CardBattle() {
 
     setIsLoading(true)
     try {
-      const statsHash = ethers.keccak256(ethers.toUtf8Bytes('battle-stats'))
+      // Calculate deck total stats and encrypt using FHE
+      const deck = myDecks.find(d => d.id === selectedDeckForBattle)
+      if (!deck) {
+        throw new Error('Deck not found')
+      }
+
+      // Calculate total stats for the deck (sum of all characters' stats)
+      let totalStats = 0
+      for (const charId of deck.characterIds) {
+        const char = CHARACTERS[charId]
+        if (char) {
+          totalStats += char.strength + char.intelligence + char.agility
+        }
+      }
+
+      const encryptedStats = await encryptNumber(totalStats)
 
       const signer = await getEthersSigner()
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
@@ -276,7 +363,7 @@ export default function CardBattle() {
       const tx = await contract.createBattle(
         battleOpponent.trim(),
         selectedDeckForBattle,
-        statsHash
+        encryptedStats
       )
       await tx.wait()
 
@@ -315,9 +402,21 @@ export default function CardBattle() {
     <div className="min-h-screen bg-gray-50 text-gray-900 p-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold">Magic FHE Gathering</h1>
+          <h1 className="text-4xl font-bold">m-fhe-g</h1>
           <ConnectButton />
         </div>
+
+        {/* FHE Relayer Loading Indicator */}
+        {isRelayerLoading && (
+          <div className="mb-4 bg-yellow-100 border border-yellow-400 rounded p-3 text-center">
+            <p className="text-yellow-800">Initializing FHE encryption system...</p>
+          </div>
+        )}
+        {!isRelayerLoading && !relayerInstance && (
+          <div className="mb-4 bg-red-100 border border-red-400 rounded p-3 text-center">
+            <p className="text-red-800">FHE encryption system failed to initialize. Please refresh the page.</p>
+          </div>
+        )}
 
         <div className="flex gap-4 mb-8 border-b border-gray-300">
           <button

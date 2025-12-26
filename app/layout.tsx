@@ -7,7 +7,7 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Magic FHE Gathering",
+  title: "m-fhe-g",
   description: "Collect cards and battle with other players using FHE",
 };
 

@@ -7,7 +7,7 @@ import { sepolia } from 'wagmi/chains'
 import '@rainbow-me/rainbowkit/styles.css'
 
 const config = getDefaultConfig({
-  appName: 'Magic FHE Gathering',
+  appName: 'm-fhe-g',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '00000000000000000000000000000000000000000',
   chains: [sepolia],
 })

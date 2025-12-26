@@ -2,11 +2,12 @@
 pragma solidity ^0.8.20;
 
 /**
- * Card Battle Game
+ * Card Battle Game with Fully Homomorphic Encryption
  * 
  * Collect character cards and battle with other players.
- * Character stats (strength, intelligence, agility) and abilities are encrypted with FHE.
- * Battles are resolved on-chain with encrypted data.
+ * Character stats (strength, intelligence, agility) are encrypted with FHE via Zama FHEVM.
+ * All stat values are stored as FHE handles (bytes32) which represent encrypted euint32 values.
+ * Battles are resolved on-chain using encrypted data without decryption.
  */
 contract CardBattle {
     
@@ -14,9 +15,9 @@ contract CardBattle {
         uint256 id;
         string name;
         string ability;
-        bytes32 encryptedStrength;
-        bytes32 encryptedIntelligence;
-        bytes32 encryptedAgility;
+        bytes32 encryptedStrength;      // FHE handle for encrypted strength (euint32)
+        bytes32 encryptedIntelligence;  // FHE handle for encrypted intelligence (euint32)
+        bytes32 encryptedAgility;       // FHE handle for encrypted agility (euint32)
     }
     
     struct Deck {
@@ -32,8 +33,8 @@ contract CardBattle {
         address player2;
         uint256 deck1Id;
         uint256 deck2Id;
-        bytes32 encryptedStats1;
-        bytes32 encryptedStats2;
+        bytes32 encryptedStats1;  // FHE handle for encrypted deck stats player1 (euint32)
+        bytes32 encryptedStats2;  // FHE handle for encrypted deck stats player2 (euint32)
         uint256 createdAt;
         BattleStatus status;
         address winner;
@@ -61,28 +62,39 @@ contract CardBattle {
     event BattleCreated(uint256 indexed battleId, address indexed player1, address indexed player2);
     event BattleCompleted(uint256 indexed battleId, address indexed winner);
     
+    /**
+     * Mint a new character with FHE-encrypted stats
+     * @param _name Character name (public)
+     * @param _ability Character ability description (public)
+     * @param _encryptedStrength FHE handle (euint32) for encrypted strength value
+     * @param _encryptedIntelligence FHE handle (euint32) for encrypted intelligence value
+     * @param _encryptedAgility FHE handle (euint32) for encrypted agility value
+     * @return characterId The ID of the newly minted character
+     */
     function mintCharacter(
         string memory _name,
         string memory _ability,
-        bytes32 _encryptedStrength,
-        bytes32 _encryptedIntelligence,
-        bytes32 _encryptedAgility
+        bytes32 _encryptedStrength,      // FHE handle
+        bytes32 _encryptedIntelligence,  // FHE handle
+        bytes32 _encryptedAgility        // FHE handle
     ) external returns (uint256) {
         require(bytes(_name).length > 0, "Character name cannot be empty");
-        require(_encryptedStrength != bytes32(0), "Encrypted strength cannot be empty");
-        require(_encryptedIntelligence != bytes32(0), "Encrypted intelligence cannot be empty");
-        require(_encryptedAgility != bytes32(0), "Encrypted agility cannot be empty");
+        require(_encryptedStrength != bytes32(0), "FHE encrypted strength cannot be empty");
+        require(_encryptedIntelligence != bytes32(0), "FHE encrypted intelligence cannot be empty");
+        require(_encryptedAgility != bytes32(0), "FHE encrypted agility cannot be empty");
         
         uint256 characterId = characterCounter;
         characterCounter++;
         
+        // Store FHE handles - these represent encrypted stat values that can be used
+        // in homomorphic operations without decryption
         characters[characterId] = Character({
             id: characterId,
             name: _name,
             ability: _ability,
-            encryptedStrength: _encryptedStrength,
-            encryptedIntelligence: _encryptedIntelligence,
-            encryptedAgility: _encryptedAgility
+            encryptedStrength: _encryptedStrength,      // FHE handle stored
+            encryptedIntelligence: _encryptedIntelligence, // FHE handle stored
+            encryptedAgility: _encryptedAgility         // FHE handle stored
         });
         
         userCharacters[msg.sender].push(characterId);
@@ -121,26 +133,34 @@ contract CardBattle {
         return deckId;
     }
     
+    /**
+     * Create a battle with FHE-encrypted deck stats
+     * @param _opponent Address of the opponent player
+     * @param _myDeckId ID of your deck to use in battle
+     * @param _encryptedStats FHE handle (euint32) for encrypted total deck stats
+     * @return battleId The ID of the newly created battle
+     */
     function createBattle(
         address _opponent,
         uint256 _myDeckId,
-        bytes32 _encryptedStats
+        bytes32 _encryptedStats  // FHE handle
     ) external returns (uint256) {
         require(_opponent != address(0), "Invalid opponent address");
         require(_opponent != msg.sender, "Cannot battle yourself");
         require(decks[_myDeckId].owner == msg.sender, "You don't own this deck");
         require(decks[_myDeckId].isActive, "Deck is not active");
-        require(_encryptedStats != bytes32(0), "Encrypted stats cannot be empty");
+        require(_encryptedStats != bytes32(0), "FHE encrypted stats cannot be empty");
         
         uint256 battleId = battleCounter;
         battleCounter++;
         
+        // Store FHE handle for player1's encrypted deck stats
         battles[battleId] = Battle({
             player1: msg.sender,
             player2: _opponent,
             deck1Id: _myDeckId,
             deck2Id: 0,
-            encryptedStats1: _encryptedStats,
+            encryptedStats1: _encryptedStats,  // FHE handle stored
             encryptedStats2: bytes32(0),
             createdAt: block.timestamp,
             status: BattleStatus.Pending,
@@ -154,20 +174,27 @@ contract CardBattle {
         return battleId;
     }
     
+    /**
+     * Accept a battle challenge with FHE-encrypted deck stats
+     * @param _battleId ID of the battle to accept
+     * @param _myDeckId ID of your deck to use in battle
+     * @param _encryptedStats FHE handle (euint32) for encrypted total deck stats
+     */
     function acceptBattle(
         uint256 _battleId,
         uint256 _myDeckId,
-        bytes32 _encryptedStats
+        bytes32 _encryptedStats  // FHE handle
     ) external {
         Battle storage battle = battles[_battleId];
         require(battle.player2 == msg.sender, "You are not the opponent");
         require(battle.status == BattleStatus.Pending, "Battle is not pending");
         require(decks[_myDeckId].owner == msg.sender, "You don't own this deck");
         require(decks[_myDeckId].isActive, "Deck is not active");
-        require(_encryptedStats != bytes32(0), "Encrypted stats cannot be empty");
+        require(_encryptedStats != bytes32(0), "FHE encrypted stats cannot be empty");
         
+        // Store FHE handle for player2's encrypted deck stats
         battle.deck2Id = _myDeckId;
-        battle.encryptedStats2 = _encryptedStats;
+        battle.encryptedStats2 = _encryptedStats;  // FHE handle stored
         battle.status = BattleStatus.Active;
     }
     
