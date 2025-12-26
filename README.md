@@ -1,6 +1,14 @@
-# m-fhe-g
 
-Card battle game with Fully Homomorphic Encryption (FHE) - Collect character cards and battle with other players. All character stats are encrypted using FHE via Zama FHEVM, ensuring complete privacy until battle resolution.
+# m-fhe-g<img width="1200" height="1200" alt="image_2025-12-26_21-23-13" src="https://github.com/user-attachments/assets/57cedd32-6893-4627-b429-b5d9383ac222" />
+
+
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║        ✨🜂  M – F H E – G  🜂✨                            ║
+║                                                            ║
+║   Encrypted Card Battles • Arcane Strategy • Web3 Magic    ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
 
 ⸻
 
