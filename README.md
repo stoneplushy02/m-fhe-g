@@ -1,6 +1,5 @@
 
-# m-fhe-g<img width="500" height="500" alt="image_2025-12-26_21-23-13" src="https://github.com/user-attachments/assets/57cedd32-6893-4627-b429-b5d9383ac222" />
-
+<img width="500" height="500" alt="image_2025-12-26_21-23-13" src="https://github.com/user-attachments/assets/57cedd32-6893-4627-b429-b5d9383ac222" />
 
 ═════════════════════════
 
